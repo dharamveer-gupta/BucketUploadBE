@@ -22,8 +22,8 @@ const s3Client = new S3Client({
     endpoint: process.env.AWS_ENDPOINT,
     maxAttempts: 3,
     requestHandler: new NodeHttpHandler({
-        connectionTimeout: 30000, // Increase connection timeout (30 seconds)
-        socketTimeout: 300000,    // Increase socket timeout (5 minutes)
+        connectionTimeout: 30000,
+        socketTimeout: 300000,
     }),
 });
 
@@ -36,16 +36,16 @@ const wasabiClient = new S3Client({
     },
     maxAttempts: 3,
     requestHandler: new NodeHttpHandler({
-        connectionTimeout: 30000, // Increase connection timeout (30 seconds)
-        socketTimeout: 300000,    // Increase socket timeout (5 minutes)
+        connectionTimeout: 30000,
+        socketTimeout: 300000,
     }),
 });
 
 router.post('/upload', upload.single('file'), async (req, res) => {
     try {
         const file = req.file;
-        console.log("file -> ", file);
-        console.log(process.env.AWS_ACCESS_KEY_ID, process.env.AWS_SECRET_ACCESS_KEY);
+        // console.log("file -> ", file);
+        // console.log(process.env.AWS_ACCESS_KEY_ID, process.env.AWS_SECRET_ACCESS_KEY);
         const userId = req.body.userId;
         const generateThumbnail = req.body.thumbnail === 'true'; // Check if thumbnail should be generated
 
@@ -54,8 +54,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         }
 
         const ext = file.originalname.split('.').pop();
-        const fileName = `${uuidv4()}.${ext}`;
-        const rawFilePath = `uploads/${userId}/${fileName}`;
+        // const fileName = `${uuidv4()}.${ext}`;
+        const fileName = `${uuidv4()}`;
+        const rawFilePath = `uploads/${userId}/${fileName}.${ext}`;
 
         // Upload raw image to AWS S3
         const rawUploadParams = {
@@ -69,14 +70,16 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         // Process and upload compressed image to Wasabi
         const compressedBuffer = await sharp(file.buffer)
-            .resize({ width: 500 })
+            .webp({ 
+                quality: 95,
+            })
             .toBuffer()
             .catch(err => {
                 console.error('Sharp image processing error:', err);
                 throw new Error('Image processing failed');
             });
 
-        const compressedFilePath = `compressed/${userId}/${fileName}`;
+        const compressedFilePath = `compressed/${userId}/${fileName}.webp`;
         const compressedUploadParams = {
             Bucket: process.env.WASABI_BUCKET_NAME,
             Key: compressedFilePath,
@@ -90,14 +93,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         if (generateThumbnail) {
             // Process and upload thumbnail image to Wasabi
             const thumbnailBuffer = await sharp(file.buffer)
-                .resize({ width: 150 })
+                // .resize({ width: 150 })
+                .webp({
+                    quality: 45,
+                })
                 .toBuffer()
                 .catch(err => {
                     console.error('Sharp thumbnail image processing error:', err);
                     throw new Error('Image thumbnail processing failed');
                 });
 
-            const thumbnailFilePath = `thumbnails/${userId}/${fileName}`;
+            const thumbnailFilePath = `thumbnails/${userId}/${fileName}.webp`;
             const thumbnailUploadParams = {
                 Bucket: process.env.WASABI_BUCKET_NAME,
                 Key: thumbnailFilePath,
@@ -111,11 +117,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         res.json({
             rawUrl,
             compressedUrl,
-            ...(generateThumbnail && { thumbnailUrl }), // Include thumbnailUrl only if generated
+            ...(generateThumbnail && { thumbnailUrl }),
         });
     } catch (error) {
-        console.error('Error uploading file:', error.message); // Log the error message
-        console.error(error.stack); // Log the stack trace for debugging
+        console.error('Error uploading file:', error.message);
+        console.error(error.stack);
         res.status(500).json({ error: 'Failed to upload file' });
     }
 });
